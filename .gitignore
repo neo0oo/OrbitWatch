@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+
+# Environment variables
+.env
+
+# SQLite database
+*.db
+*.sqlite3
+
+# OS / editor
+.DS_Store
+.vscode/
