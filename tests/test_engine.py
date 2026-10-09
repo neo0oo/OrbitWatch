@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 import pytest
-from app.propagation.engine import propagate_teme, teme_to_geodetic
+from app.propagation.engine import propagate_teme, teme_to_geodetic, orbit_points
 
 LINE1 = "1 25544U 98067A   19343.69339541  .00001764  00000-0  38792-4 0  9991"
 LINE2 = "2 25544  51.6439 211.2001 0007417  17.6667  85.6398 15.50103472202482"
@@ -27,3 +27,9 @@ def test_iss_latitude_never_exceeds_its_inclination():
         when = start + timedelta(minutes=minutes)
         lat, _lon, _alt = teme_to_geodetic(propagate_teme(LINE1, LINE2, when), when)
         assert abs(lat) <= 52.0
+
+def test_orbit_points_covers_requested_window():
+    start = datetime(2019, 12, 9, 12, 0, 0, tzinfo=timezone.utc)
+    points = orbit_points(LINE1, LINE2, start, minutes=10, step_seconds=60)
+    assert len(points) == 11
+    assert points[0]["timestamp"] == start.isoformat()

@@ -1,5 +1,5 @@
 import math
-from datetime import timezone
+from datetime import timezone, timedelta
 from sgp4.api import Satrec, jday
 
 EARTH_RADIUS_KM = 6378.137
@@ -48,3 +48,16 @@ def teme_to_geodetic(position, when):
     else:
         alt = z / sin_lat - n * (1 - ECC_SQUARED)
     return math.degrees(lat), math.degrees(lon), alt
+
+def orbit_points(line1, line2, start, minutes=95, step_seconds=60):
+    points = []
+    for offset in range(0, minutes * 60 + 1, step_seconds):
+        when = start + timedelta(seconds=offset)
+        lat, lon, alt = teme_to_geodetic(propagate_teme(line1, line2, when), when)
+        points.append({
+            "timestamp": when.isoformat(),
+            "latitude": lat,
+            "longitude": lon,
+            "altitude_km": alt,
+        })
+    return points
