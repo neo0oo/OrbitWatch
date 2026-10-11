@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OrbitWatch</title>
+  <link rel="stylesheet" href="style.css">
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="globe"></div>
+
+  <div id="panel">
+    <h1>OrbitWatch</h1>
+
+    <label for="satellite-select">Tracked satellite</label>
+    <select id="satellite-select"></select>
+    <button id="remove-btn" type="button">Remove selected</button>
+
+    <form id="add-form">
+      <label for="norad-input">Add by NORAD ID</label>
+      <div class="row">
+        <input id="norad-input" type="number" min="1" placeholder="e.g. 25544" required>
+        <button type="submit">Add</button>
+      </div>
+    </form>
+
+    <p id="message"></p>
+
+    <dl id="readout">
+      <dt>Latitude</dt><dd id="lat">-</dd>
+      <dt>Longitude</dt><dd id="lon">-</dd>
+      <dt>Altitude</dt><dd id="alt">-</dd>
+      <dt>Updated (UTC)</dt><dd id="updated">-</dd>
+    </dl>
+  </div>
+
+  <script type="module" src="main.js"></script>
+</body>
+</html>
