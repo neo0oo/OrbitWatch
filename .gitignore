@@ -11,6 +11,7 @@ venv/
 # SQLite database
 *.db
 *.sqlite3
+data/
 
 # OS / editor
 .DS_Store

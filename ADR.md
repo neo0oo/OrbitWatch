@@ -39,3 +39,16 @@
 **Alternatives considered**: A separate auto-increment id plus a TLE history table with one row per fetch, but I only ever need the current TLE to get a position, so the history would be unused.
 
 **Consequences**: Refreshing a TLE is a single upsert and removing a satellite cleans up its TLE automatically. The downside is that I can't look at old TLEs later.
+
+## 4. Testing Approach
+**Date**: 2026-10-11
+
+**Status**: Decided
+
+**Context**: The brief needs at least 70% coverage on the core logic of both domains, but my app depends on the network (Celestrak) and a database, which are awkward to test.
+
+**Decision**: I unit-tested the pure logic directly (the orbit maths in engine.py checked against reference values, TLE parsing, the staleness check) and tested the catalog functions against a temporary SQLite file with Celestrak faked. Coverage excludes main.py and the routes files since they're thin glue.
+
+**Alternatives considered**: Testing everything through the HTTP routes was an option, but it's slower and the logic is already covered more directly. Calling the real Celestrak in tests would make them fail whenever the internet or Celestrak is down.
+
+**Consequences**: The tests run fast and offline and coverage is XX%. The routes, the frontend and the real fetch_tle network call have no automated tests, so I only checked those by hand.
