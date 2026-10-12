@@ -52,3 +52,16 @@
 **Alternatives considered**: Testing everything through the HTTP routes was an option, but it's slower and the logic is already covered more directly. Calling the real Celestrak in tests would make them fail whenever the internet or Celestrak is down.
 
 **Consequences**: The tests run fast and offline and coverage is XX%. The routes, the frontend and the real fetch_tle network call have no automated tests, so I only checked those by hand.
+
+## 5. Not Building Pass Prediction
+**Date**: 2026-10-12
+
+**Status**: Decided
+
+**Context**: My original idea included telling a user when a satellite will next be overhead from their location, but I only had about two weeks and needed both domains, the tests and the docs finished first.
+
+**Decision**: I didn't build pass prediction, so the propagation domain only covers a satellite's live position and its upcoming orbit path.
+
+**Alternatives considered**: A basic version needs an observer's location, azimuth and elevation maths, and a search over time for when the satellite rises and sets. I rejected it because it would have taken time away from testing and documentation, which are worth more in this assignment.
+
+**Consequences**: OrbitWatch shows where a satellite is but not when to look for it. It can be added later as new functions in engine.py that reuse the existing position code, without touching the catalog domain.
