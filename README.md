@@ -97,3 +97,34 @@ OrbitWatch/
 
 - OrbitWatch shows where a satellite is, not when it will pass over a given place (pass prediction was deliberately left out, see ADR-5).
 - Positions are only as accurate as the TLE, which is why TLEs are refreshed regularly.
+
+## Container contract check
+
+Result of running the provided `run.sh` against this repo:
+
+```
+=== SDD Assignment 1 contract check ===
+Repository: /Users/neomedic/OrbitWatch
+
+==> Repository shape
+  PASS  one Dockerfile, one manifest (requirements.txt)
+
+==> Build from a clean context, no build args
+  PASS  image built
+  PASS  image size 58 MB
+
+==> Start on PORT=8000 and reach it from the host
+  PASS  HTTP 200 from http://localhost:8000/
+
+==> SQLite file under DATA_DIR
+  PASS  found in /data: orbitwatch.db
+
+==> Data persists, and a second boot does not re-seed
+  PASS  volume at /data persists
+  PASS  row counts unchanged across restart: satellites=0 tle_cache=0
+
+==> PORT override is honoured (not hardcoded)
+  PASS  HTTP 200 from http://localhost:9123/
+
+=== ALL CHECKS PASSED ===
+```
