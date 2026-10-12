@@ -28,7 +28,7 @@ One FastAPI process serves both the API and the frontend. The backend is split i
 ## Setup and run
 
 ```bash
-git clone <<https://github.com/neo0oo/OrbitWatch>>
+git clone https://github.com/neo0oo/OrbitWatch
 cd OrbitWatch
 python3 -m venv venv
 source venv/bin/activate
