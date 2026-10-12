@@ -51,7 +51,7 @@
 
 **Alternatives considered**: Testing everything through the HTTP routes was an option, but it's slower and the logic is already covered more directly. Calling the real Celestrak in tests would make them fail whenever the internet or Celestrak is down.
 
-**Consequences**: The tests run fast and offline and coverage is XX%. The routes, the frontend and the real fetch_tle network call have no automated tests, so I only checked those by hand.
+**Consequences**: The tests run fast and offline and coverage is 82%. The routes, the frontend and the real fetch_tle network call have no automated tests, so I only checked those by hand.
 
 ## 5. Not Building Pass Prediction
 **Date**: 2026-10-12
