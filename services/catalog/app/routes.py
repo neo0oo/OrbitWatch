@@ -30,3 +30,11 @@ def post_satellite(body: SatelliteIn):
 def delete_satellite(norad_id: int):
     if not logic.remove_satellite(norad_id):
         raise HTTPException(status_code=404, detail="Satellite is not in the catalog")
+
+@router.get("/{norad_id}/tle")
+def get_satellite_tle(norad_id: int):
+    try:
+        line1, line2 = logic.get_tle(norad_id)
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return {"norad_id": norad_id, "line1": line1, "line2": line2}
