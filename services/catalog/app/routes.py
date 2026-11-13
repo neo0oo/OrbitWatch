@@ -2,7 +2,7 @@ import requests
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from app.catalog import logic
+from app import logic
 
 router = APIRouter(prefix="/api/satellites", tags=["catalog"])
 

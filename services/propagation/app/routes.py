@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Query
 
 from app.catalog.logic import get_tle
-from app.propagation import engine
+from app import engine
 
 router = APIRouter(prefix="/api/satellites", tags=["propagation"])
 
