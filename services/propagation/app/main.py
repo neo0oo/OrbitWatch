@@ -3,14 +3,22 @@ import time
 
 import uvicorn
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
-from app.config import GIT_SHA, PORT
+from app.config import ALLOWED_ORIGINS, GIT_SHA, PORT
 from app.routes import router
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger("orbitwatch")
 
 app = FastAPI(title="OrbitWatch propagation")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_methods=["GET", "POST", "DELETE"],
+    allow_headers=["*"],
+)
 
 
 @app.middleware("http")

@@ -4,9 +4,10 @@ from contextlib import asynccontextmanager
 
 import uvicorn
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.config import GIT_SHA, PORT
+from app.config import ALLOWED_ORIGINS, GIT_SHA, PORT
 from app.database import check_db, init_db
 from app.routes import router
 
@@ -21,6 +22,13 @@ async def lifespan(app):
 
 
 app = FastAPI(title="OrbitWatch catalog", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_methods=["GET", "POST", "DELETE"],
+    allow_headers=["*"],
+)
 
 
 @app.middleware("http")
