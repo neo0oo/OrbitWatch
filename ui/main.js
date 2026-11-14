@@ -98,8 +98,15 @@ window.addEventListener("resize", () => {
 
 
 
-async function api(path, options) {
-  const response = await fetch(path, options);
+const { CATALOG_URL, PROPAGATION_URL } = window.CONFIG;
+
+async function api(url, options) {
+  let response;
+  try {
+    response = await fetch(url, options);
+  } catch (_) {
+    throw new Error("Service unavailable, try again shortly");
+  }
   if (!response.ok) {
     let detail = `Request failed (${response.status})`;
     try {
@@ -131,7 +138,7 @@ function stopTracking() {
 
 async function updatePosition(noradId) {
   try {
-    const p = await api(`/api/satellites/${noradId}/position`);
+    const p = await api(`${PROPAGATION_URL}/api/satellites/${noradId}/position`);
     marker.position.copy(toVector3(p.latitude, p.longitude, p.altitude_km));
     marker.visible = true;
     document.getElementById("lat").textContent = `${p.latitude.toFixed(2)}°`;
@@ -146,7 +153,7 @@ async function updatePosition(noradId) {
 
 async function updateTrack(noradId) {
   try {
-    const data = await api(`/api/satellites/${noradId}/track`);
+    const data = await api(`${PROPAGATION_URL}/api/satellites/${noradId}/track`);
     drawOrbit(data.points);
   } catch (error) {
     showMessage(error.message);
@@ -164,7 +171,7 @@ function startTracking(noradId) {
 
 
 async function loadSatellites(selectId) {
-  const satellites = await api("/api/satellites");
+  const satellites = await api(`${CATALOG_URL}/api/satellites`);
   select.innerHTML = "";
   for (const sat of satellites) {
     const option = document.createElement("option");
@@ -188,7 +195,7 @@ addForm.addEventListener("submit", async (event) => {
   const noradId = Number(noradInput.value);
   showMessage("Fetching from Celestrak...");
   try {
-    await api("/api/satellites", {
+    await api(`${CATALOG_URL}/api/satellites`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ norad_id: noradId }),
@@ -203,7 +210,7 @@ addForm.addEventListener("submit", async (event) => {
 removeBtn.addEventListener("click", async () => {
   if (!select.value) return;
   try {
-    await api(`/api/satellites/${select.value}`, { method: "DELETE" });
+    await api(`${CATALOG_URL}/api/satellites/${select.value}`, { method: "DELETE" });
     await loadSatellites();
   } catch (error) {
     showMessage(error.message);

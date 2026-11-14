@@ -2,17 +2,18 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Query
 
-from app.catalog.logic import get_tle
-from app.propagation import engine
+from app import catalog_client, engine
 
 router = APIRouter(prefix="/api/satellites", tags=["propagation"])
 
 
 def _tle_or_404(norad_id):
     try:
-        return get_tle(norad_id)
+        return catalog_client.get_tle(norad_id)
     except LookupError as error:
         raise HTTPException(status_code=404, detail=str(error))
+    except catalog_client.CatalogUnavailable as error:
+        raise HTTPException(status_code=503, detail=str(error))
 
 
 @router.get("/{norad_id}/position")

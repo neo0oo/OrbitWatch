@@ -31,3 +31,16 @@ def init_db():
     conn.executescript(SCHEMA)
     conn.commit()
     conn.close()
+
+def check_db():
+    try:
+        conn = get_connection()
+        try:
+            conn.execute("BEGIN IMMEDIATE")  # needs the write lock, so it proves we can write
+            conn.execute("SELECT COUNT(*) FROM satellites")  # proves we can read
+            conn.rollback()  # nothing is actually changed
+        finally:
+            conn.close()
+        return True
+    except sqlite3.Error:
+        return False

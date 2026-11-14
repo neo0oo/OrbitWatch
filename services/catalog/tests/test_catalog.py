@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 import pytest
 import requests
 from app import database
-from app.catalog import logic
+from app import logic
 
 SAMPLE_RESPONSE = """ISS (ZARYA)
 1 25544U 98067A   26279.01444283  .00005131  00000+0  10208-3 0  9995
