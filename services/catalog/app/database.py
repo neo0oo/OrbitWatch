@@ -1,46 +1,76 @@
-import sqlite3
+import logging
+import time
 from pathlib import Path
-from app.config import DATA_DIR
+from urllib.parse import unquote, urlparse
 
-DB_PATH = Path(DATA_DIR) / "orbitwatch.db"
+import pymssql
 
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS satellites (
-    norad_id    INTEGER PRIMARY KEY,
-    name        TEXT NOT NULL,
-    added_at    TEXT NOT NULL DEFAULT (datetime('now'))
-);
+from app.config import DATABASE_URL
 
-CREATE TABLE IF NOT EXISTS tle_cache (
-    norad_id    INTEGER PRIMARY KEY REFERENCES satellites(norad_id) ON DELETE CASCADE,
-    line1       TEXT NOT NULL,
-    line2       TEXT NOT NULL,
-    fetched_at  TEXT NOT NULL DEFAULT (datetime('now'))
-);
-"""
+logger = logging.getLogger("orbitwatch")
+MIGRATIONS_DIR = Path(__file__).resolve().parent.parent / "migrations"
 
-def get_connection():
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute("PRAGMA foreign_keys = ON")
-    conn.row_factory = sqlite3.Row
-    return conn
 
-def init_db():
+def _connect_args():
+    if not DATABASE_URL:
+        raise RuntimeError("DATABASE_URL is not set")
+    url = urlparse(DATABASE_URL)
+    return {
+        "server": url.hostname,
+        "port": url.port or 1433,
+        "user": unquote(url.username),
+        "password": unquote(url.password),
+        "database": url.path.lstrip("/"),
+    }
+
+
+def get_connection(retries=5, delay=2):
+    """Connect, retrying with backoff (Azure SQL may be paused and take up to a minute to resume)."""
+    for attempt in range(1, retries + 1):
+        try:
+            return pymssql.connect(**_connect_args(), as_dict=True, login_timeout=10, tds_version="7.4")
+        except pymssql.OperationalError:
+            if attempt == retries:
+                raise
+            logger.info("Database not ready, retry %s/%s", attempt, retries)
+            time.sleep(delay * attempt)
+
+
+def run_migrations():
     conn = get_connection()
-    conn.executescript(SCHEMA)
-    conn.commit()
-    conn.close()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            IF OBJECT_ID('schema_migrations') IS NULL
+            CREATE TABLE schema_migrations (
+                version NVARCHAR(255) NOT NULL PRIMARY KEY,
+                applied_at DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+            )
+        """)
+        conn.commit()
+        cur.execute("SELECT version FROM schema_migrations")
+        applied = {row["version"] for row in cur.fetchall()}
+        for path in sorted(MIGRATIONS_DIR.glob("*.sql")):
+            if path.name in applied:
+                continue
+            logger.info("Applying migration %s", path.name)
+            cur.execute(path.read_text())
+            cur.execute("INSERT INTO schema_migrations (version) VALUES (%s)", (path.name,))
+            conn.commit()
+    finally:
+        conn.close()
+
 
 def check_db():
     try:
-        conn = get_connection()
+        conn = get_connection(retries=1)
         try:
-            conn.execute("BEGIN IMMEDIATE")  # needs the write lock, so it proves we can write
-            conn.execute("SELECT COUNT(*) FROM satellites")  # proves we can read
-            conn.rollback()  # nothing is actually changed
+            cur = conn.cursor()
+            cur.execute("SELECT COUNT(*) AS n FROM satellites")      # can read
+            cur.execute("UPDATE satellites SET name = name WHERE 1 = 0")  # has write permission
+            conn.rollback()
         finally:
             conn.close()
         return True
-    except sqlite3.Error:
+    except Exception:
         return False

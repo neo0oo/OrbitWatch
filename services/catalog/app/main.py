@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.config import ALLOWED_ORIGINS, GIT_SHA, PORT
-from app.database import check_db, init_db
+from app.database import check_db, run_migrations
 from app.routes import router
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -17,7 +17,7 @@ logger = logging.getLogger("orbitwatch")
 
 @asynccontextmanager
 async def lifespan(app):
-    init_db()
+    run_migrations()
     yield
 
 
