@@ -2,14 +2,14 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Query
 
-from app import catalog_client, engine
+from app import catalog_client, engine, tle_service
 
 router = APIRouter(prefix="/api/satellites", tags=["propagation"])
 
 
 def _tle_or_404(norad_id):
     try:
-        return catalog_client.get_tle(norad_id)
+        return tle_service.get_tle(norad_id)
     except LookupError as error:
         raise HTTPException(status_code=404, detail=str(error))
     except catalog_client.CatalogUnavailable as error:
@@ -18,7 +18,7 @@ def _tle_or_404(norad_id):
 
 @router.get("/{norad_id}/position")
 def get_position(norad_id: int):
-    line1, line2 = _tle_or_404(norad_id)
+    line1, line2, stale = _tle_or_404(norad_id)
     when = datetime.now(timezone.utc)
     try:
         position = engine.propagate_teme(line1, line2, when)
@@ -31,6 +31,7 @@ def get_position(norad_id: int):
         "latitude": lat,
         "longitude": lon,
         "altitude_km": alt,
+        "stale_tle": stale,
     }
 
 
@@ -40,10 +41,10 @@ def get_track(
     minutes: int = Query(95, ge=1, le=300),
     step_seconds: int = Query(60, ge=10, le=600),
 ):
-    line1, line2 = _tle_or_404(norad_id)
+    line1, line2, stale = _tle_or_404(norad_id)
     start = datetime.now(timezone.utc)
     try:
         points = engine.orbit_points(line1, line2, start, minutes, step_seconds)
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error))
-    return {"norad_id": norad_id, "points": points}
+    return {"norad_id": norad_id, "points": points, "stale_tle": stale}
