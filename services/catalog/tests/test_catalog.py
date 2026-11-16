@@ -11,9 +11,15 @@ SAMPLE_RESPONSE = """ISS (ZARYA)
 
 
 @pytest.fixture
-def db(tmp_path, monkeypatch):
-    monkeypatch.setattr(database, "DB_PATH", tmp_path / "test.db")
-    database.init_db()
+def db():
+    if not database.DATABASE_URL:
+        pytest.skip("DATABASE_URL not set; start SQL Server with docker compose")
+    database.run_migrations()
+    conn = database.get_connection()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM satellites")  # cascades to tle_cache
+    conn.commit()
+    conn.close()
 
 
 def fake_fetch(line1="1 FAKE", line2="2 FAKE"):
@@ -22,8 +28,9 @@ def fake_fetch(line1="1 FAKE", line2="2 FAKE"):
 
 def make_stale(norad_id):
     conn = database.get_connection()
-    conn.execute(
-        "UPDATE tle_cache SET fetched_at = '2020-01-01 00:00:00' WHERE norad_id = ?",
+    cur = conn.cursor()
+    cur.execute(
+        "UPDATE tle_cache SET fetched_at = '2020-01-01T00:00:00' WHERE norad_id = %s",
         (norad_id,),
     )
     conn.commit()
