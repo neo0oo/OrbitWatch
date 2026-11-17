@@ -34,5 +34,37 @@ services:
       - /opt/mssql-tools18/bin/sqlcmd -S sqlserver -U sa -P "$$MSSQL_SA_PASSWORD" -C -b -i /db/init.sql -v CATALOG_DB_PASSWORD="$$CATALOG_DB_PASSWORD" PROPAGATION_DB_PASSWORD="$$PROPAGATION_DB_PASSWORD"
     restart: "no"
 
+  catalog:
+    build: ./services/catalog
+    environment:
+      PORT: 8000
+      DATABASE_URL: mssql://catalog_user:${CATALOG_DB_PASSWORD:-LocalOnly_Catalog_Pass1}@sqlserver:1433/catalog
+      ALLOWED_ORIGINS: http://localhost:3000
+    ports:
+      - "8001:8000"
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+
+  propagation:
+    build: ./services/propagation
+    environment:
+      PORT: 8000
+      DATABASE_URL: mssql://propagation_user:${PROPAGATION_DB_PASSWORD:-LocalOnly_Prop_Pass1}@sqlserver:1433/propagation
+      CATALOG_URL: http://catalog:8000
+      ALLOWED_ORIGINS: http://localhost:3000
+    ports:
+      - "8002:8000"
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+
+  ui:
+    image: nginx:alpine
+    volumes:
+      - ./ui:/usr/share/nginx/html:ro
+    ports:
+      - "3000:80"
+
 volumes:
   sqldata:
