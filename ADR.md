@@ -65,3 +65,29 @@
 **Alternatives considered**: A basic version needs an observer's location, azimuth and elevation maths, and a search over time for when the satellite rises and sets. I rejected it because it would have taken time away from testing and documentation, which are worth more in this assignment.
 
 **Consequences**: OrbitWatch shows where a satellite is but not when to look for it. It can be added later as new functions in engine.py that reuse the existing position code, without touching the catalog domain.
+
+## 6. The split
+**Date**: 2026-11-17
+
+**Status**: Decided
+
+**Context**: Assignment 2 needs one service per domain, each with its own container and database, talking over HTTP.
+
+**Decision**: I kept the ADR-2 seam: catalog (satellites and TLEs) and propagation (orbit maths). The only call across it is propagation asking the catalog for a TLE (`GET /api/satellites/{id}/tle`), which replaced the in-process `get_tle()` call.
+
+**Alternatives considered**: Letting the UI fetch the TLE and pass it to propagation. Rejected because the brief needs a server-side cross-seam flow and the browser shouldn't handle TLEs.
+
+**Consequences**: ADR-2 held and nothing moved. Because the UI polls position every 2 s, propagation caches TLEs so it doesn't call the catalog every time (ADR-7).
+
+## 7. Data and migrations
+**Date**: 2026-11-17
+
+**Status**: Decided
+
+**Context**: SQLite became SQL Server with one database per service, so the foreign key from a cached TLE to `satellites` can't cross into propagation's database.
+
+**Decision**: The catalog keeps `satellites` and `tle_cache` with the FK and cascade. Propagation has its own `tle_cache` with a plain `norad_id` and no FK: if the catalog returns 404, propagation deletes its copy, and cached TLEs expire after `TLE_CACHE_HOURS`. Schemas come from numbered SQL files run by my own runner, which records each file in `schema_migrations`.
+
+**Alternatives considered**: Alembic. Rejected because it adds SQLAlchemy and a tool I'd have to learn, while my runner is about 30 lines I can explain.
+
+**Consequences**: Propagation can serve a removed satellite's TLE for up to an hour. Recovery plan for a bad migration: it's forward-only, a failed migration rolls back because it commits together with its record, and the fix goes in a new migration, with Azure SQL's point-in-time restore if data was damaged.
