@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    name: Test ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: catalog
+            password_env: CATALOG_DB_PASSWORD
+          - service: propagation
+            password_env: PROPAGATION_DB_PASSWORD
+    defaults:
+      run:
+        working-directory: services/${{ matrix.service }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Generate throwaway database passwords
+        run: |
+          for v in MSSQL_SA_PASSWORD CATALOG_DB_PASSWORD PROPAGATION_DB_PASSWORD; do
+            p="Ci_$(openssl rand -hex 12)_Aa1"
+            echo "::add-mask::$p"
+            echo "$v=$p" >> "$GITHUB_ENV"
+          done
+
+      - name: Start SQL Server and create the databases
+        working-directory: .
+        run: docker compose run --rm db-init
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt ruff==0.6.9
+
+      - name: Lint
+        run: ruff check app tests
+
+      - name: OpenAPI file matches the code
+        run: python -c "import json; from app.main import app; print(json.dumps(app.openapi(), indent=2))" | diff - openapi.json
+
+      - name: Test with coverage gate
+        env:
+          PASSWORD_ENV: ${{ matrix.password_env }}
+        run: |
+          export DATABASE_URL="mssql://${{ matrix.service }}_user:${!PASSWORD_ENV}@localhost:1433/${{ matrix.service }}"
+          python -m pytest --cov=app --cov-report=term-missing --cov-fail-under=70
+
+  validate:
+    name: Validate system.yaml and OpenAPI
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install check-jsonschema==0.29.4 openapi-spec-validator==0.7.1
+      - run: check-jsonschema --schemafile system.schema.json system.yaml
+      - run: |
+          openapi-spec-validator services/catalog/openapi.json
+          openapi-spec-validator services/propagation/openapi.json
+
+  build:
+    name: Build ${{ matrix.service }} image
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [catalog, propagation]
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t orbitwatch-${{ matrix.service }}:${{ github.sha }} services/${{ matrix.service }}

@@ -76,7 +76,9 @@ def test_catalog_error_status_gives_503(monkeypatch):
 
 
 def test_catalog_down_serves_cached_tle_marked_stale(monkeypatch):
-    ok = lambda url, timeout: FakeResponse(200, {"norad_id": 25544, "line1": ISS_LINE1, "line2": ISS_LINE2})
+    def ok(url, timeout):
+        return FakeResponse(200, {"norad_id": 25544, "line1": ISS_LINE1, "line2": ISS_LINE2})
+
     monkeypatch.setattr(catalog_client.requests, "get", ok)
     assert client.get("/api/satellites/25544/position").status_code == 200
 

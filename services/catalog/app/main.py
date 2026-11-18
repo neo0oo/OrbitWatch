@@ -6,6 +6,7 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
 from app.config import ALLOWED_ORIGINS, GIT_SHA, PORT
 from app.database import check_db, run_migrations
@@ -13,6 +14,12 @@ from app.routes import router
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger("orbitwatch")
+
+
+class Health(BaseModel):
+    status: str
+    db: str
+    version: str
 
 
 @asynccontextmanager
@@ -40,7 +47,7 @@ async def log_requests(request, call_next):
     return response
 
 
-@app.get("/health")
+@app.get("/health", response_model=Health, responses={503: {"model": Health}})
 def health():
     ok = check_db()
     body = {"status": "ok" if ok else "unavailable", "db": "ok" if ok else "error", "version": GIT_SHA}
