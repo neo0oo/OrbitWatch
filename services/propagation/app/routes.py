@@ -1,10 +1,33 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel
 
 from app import catalog_client, engine, tle_service
 
 router = APIRouter(prefix="/api/satellites", tags=["propagation"])
+
+
+class Position(BaseModel):
+    norad_id: int
+    timestamp: str
+    latitude: float
+    longitude: float
+    altitude_km: float
+    stale_tle: bool
+
+
+class TrackPoint(BaseModel):
+    timestamp: str
+    latitude: float
+    longitude: float
+    altitude_km: float
+
+
+class Track(BaseModel):
+    norad_id: int
+    points: list[TrackPoint]
+    stale_tle: bool
 
 
 def _tle_or_404(norad_id):
@@ -16,7 +39,10 @@ def _tle_or_404(norad_id):
         raise HTTPException(status_code=503, detail=str(error))
 
 
-@router.get("/{norad_id}/position")
+errors = {404: {"description": "Not in the catalog"}, 422: {"description": "Propagation failed"}, 503: {"description": "Catalog unavailable and no cached TLE"}}
+
+
+@router.get("/{norad_id}/position", response_model=Position, responses=errors)
 def get_position(norad_id: int):
     line1, line2, stale = _tle_or_404(norad_id)
     when = datetime.now(timezone.utc)
@@ -35,7 +61,7 @@ def get_position(norad_id: int):
     }
 
 
-@router.get("/{norad_id}/track")
+@router.get("/{norad_id}/track", response_model=Track, responses=errors)
 def get_track(
     norad_id: int,
     minutes: int = Query(95, ge=1, le=300),

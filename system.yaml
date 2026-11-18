@@ -1,0 +1,56 @@
+# yaml-language-server: $schema=./system.schema.json
+student: <nmedic.ieu2024>
+prefix: <nmedic-ieu2024>
+public_url: https://TBD.azurestaticapps.net
+ui:
+  path: ui
+  static_web_app: <prefix>-ui
+  calls: [catalog, propagation]
+azure:
+  resource_group: rg-sdd-3b-g2
+  container_apps_environment: <prefix>-env
+  sql_server: <prefix>-sql
+  registry: ghcr.io/neo0oo
+services:
+  catalog:
+    description: Satellites the user tracks and their TLEs, fetched from Celestrak.
+    path: services/catalog
+    openapi: services/catalog/openapi.json
+    port_default: 8000
+    health: /health
+    migrations: services/catalog/migrations
+    env:
+      PORT: { default: 8000, description: Port the service listens on }
+      DATABASE_URL: { secret: true, description: Connection string of the catalog database }
+      ALLOWED_ORIGINS: { default: "http://localhost:3000", description: Origins allowed by CORS, comma separated }
+      CELESTRAK_URL: { default: "https://celestrak.org/NORAD/elements/gp.php", description: Celestrak TLE endpoint }
+      TLE_REFRESH_HOURS: { default: 6, description: Age after which a TLE is refetched from Celestrak }
+      GIT_SHA: { default: dev, description: Version reported by /health }
+    calls: []
+    azure:
+      container_app: <prefix>-catalog
+      sql_database: <prefix>-catalog-db
+  propagation:
+    description: Orbit maths that turns a TLE into a live position and orbit track.
+    path: services/propagation
+    openapi: services/propagation/openapi.json
+    port_default: 8000
+    health: /health
+    migrations: services/propagation/migrations
+    env:
+      PORT: { default: 8000, description: Port the service listens on }
+      DATABASE_URL: { secret: true, description: Connection string of the propagation database }
+      CATALOG_URL: { default: "http://localhost:8001", description: Base URL of the catalog service }
+      CATALOG_TIMEOUT_S: { default: 5, description: Timeout for calls to the catalog }
+      TLE_CACHE_HOURS: { default: 1, description: How long a cached TLE is used before asking the catalog again }
+      ALLOWED_ORIGINS: { default: "http://localhost:3000", description: Origins allowed by CORS, comma separated }
+      GIT_SHA: { default: dev, description: Version reported by /health }
+    calls:
+      - service: catalog
+        url_env: CATALOG_URL
+        endpoints: ["GET /api/satellites/{norad_id}/tle"]
+        timeout_s: 5
+        on_failure: Uses its cached TLE and marks the response stale_tle true; with no cached copy it returns 503 "Catalog service is unavailable".
+    azure:
+      container_app: <prefix>-propagation
+      sql_database: <prefix>-propagation-db

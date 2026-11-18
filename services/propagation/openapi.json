@@ -1,0 +1,262 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "OrbitWatch propagation",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Health",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/satellites/{norad_id}/position": {
+      "get": {
+        "tags": [
+          "propagation"
+        ],
+        "summary": "Get Position",
+        "operationId": "get_position_api_satellites__norad_id__position_get",
+        "parameters": [
+          {
+            "name": "norad_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Norad Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Position"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not in the catalog"
+          },
+          "422": {
+            "description": "Propagation failed"
+          },
+          "503": {
+            "description": "Catalog unavailable and no cached TLE"
+          }
+        }
+      }
+    },
+    "/api/satellites/{norad_id}/track": {
+      "get": {
+        "tags": [
+          "propagation"
+        ],
+        "summary": "Get Track",
+        "operationId": "get_track_api_satellites__norad_id__track_get",
+        "parameters": [
+          {
+            "name": "norad_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Norad Id"
+            }
+          },
+          {
+            "name": "minutes",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 300,
+              "minimum": 1,
+              "default": 95,
+              "title": "Minutes"
+            }
+          },
+          {
+            "name": "step_seconds",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 600,
+              "minimum": 10,
+              "default": 60,
+              "title": "Step Seconds"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Track"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not in the catalog"
+          },
+          "422": {
+            "description": "Propagation failed"
+          },
+          "503": {
+            "description": "Catalog unavailable and no cached TLE"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Health": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "db": {
+            "type": "string",
+            "title": "Db"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "db",
+          "version"
+        ],
+        "title": "Health"
+      },
+      "Position": {
+        "properties": {
+          "norad_id": {
+            "type": "integer",
+            "title": "Norad Id"
+          },
+          "timestamp": {
+            "type": "string",
+            "title": "Timestamp"
+          },
+          "latitude": {
+            "type": "number",
+            "title": "Latitude"
+          },
+          "longitude": {
+            "type": "number",
+            "title": "Longitude"
+          },
+          "altitude_km": {
+            "type": "number",
+            "title": "Altitude Km"
+          },
+          "stale_tle": {
+            "type": "boolean",
+            "title": "Stale Tle"
+          }
+        },
+        "type": "object",
+        "required": [
+          "norad_id",
+          "timestamp",
+          "latitude",
+          "longitude",
+          "altitude_km",
+          "stale_tle"
+        ],
+        "title": "Position"
+      },
+      "Track": {
+        "properties": {
+          "norad_id": {
+            "type": "integer",
+            "title": "Norad Id"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/TrackPoint"
+            },
+            "type": "array",
+            "title": "Points"
+          },
+          "stale_tle": {
+            "type": "boolean",
+            "title": "Stale Tle"
+          }
+        },
+        "type": "object",
+        "required": [
+          "norad_id",
+          "points",
+          "stale_tle"
+        ],
+        "title": "Track"
+      },
+      "TrackPoint": {
+        "properties": {
+          "timestamp": {
+            "type": "string",
+            "title": "Timestamp"
+          },
+          "latitude": {
+            "type": "number",
+            "title": "Latitude"
+          },
+          "longitude": {
+            "type": "number",
+            "title": "Longitude"
+          },
+          "altitude_km": {
+            "type": "number",
+            "title": "Altitude Km"
+          }
+        },
+        "type": "object",
+        "required": [
+          "timestamp",
+          "latitude",
+          "longitude",
+          "altitude_km"
+        ],
+        "title": "TrackPoint"
+      }
+    }
+  }
+}
