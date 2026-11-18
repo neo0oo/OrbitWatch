@@ -1,15 +1,15 @@
 # yaml-language-server: $schema=./system.schema.json
-student: <nmedic.ieu2024>
-prefix: <nmedic-ieu2024>
+student: nmedic.ieu2024
+prefix: nmedic-ieu2024
 public_url: https://TBD.azurestaticapps.net
 ui:
   path: ui
-  static_web_app: <prefix>-ui
+  static_web_app: nmedic-ieu2024-ui
   calls: [catalog, propagation]
 azure:
   resource_group: rg-sdd-3b-g2
-  container_apps_environment: <prefix>-env
-  sql_server: <prefix>-sql
+  container_apps_environment: nmedic-ieu2024-env
+  sql_server: nmedic-ieu2024-sql
   registry: ghcr.io/neo0oo
 services:
   catalog:
@@ -28,8 +28,8 @@ services:
       GIT_SHA: { default: dev, description: Version reported by /health }
     calls: []
     azure:
-      container_app: <prefix>-catalog
-      sql_database: <prefix>-catalog-db
+      container_app: nmedic-ieu2024-catalog
+      sql_database: nmedic-ieu2024-catalog-db
   propagation:
     description: Orbit maths that turns a TLE into a live position and orbit track.
     path: services/propagation
@@ -52,5 +52,5 @@ services:
         timeout_s: 5
         on_failure: Uses its cached TLE and marks the response stale_tle true; with no cached copy it returns 503 "Catalog service is unavailable".
     azure:
-      container_app: <prefix>-propagation
-      sql_database: <prefix>-propagation-db
+      container_app: nmedic-ieu2024-propagation
+      sql_database: nmedic-ieu2024-propagation-db
