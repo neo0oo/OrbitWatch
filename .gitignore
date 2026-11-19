@@ -16,3 +16,7 @@ data/
 # OS / editor
 .DS_Store
 .vscode/
+
+# Test coverage output
+.coverage
+.pytest_cache/

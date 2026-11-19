@@ -2,129 +2,150 @@
 
 OrbitWatch tracks satellites in real time. It pulls real orbital data (TLEs) from [Celestrak](https://celestrak.org), calculates where each satellite is with SGP4, and shows it on a 3D globe with its upcoming orbit path.
 
-Built as a single-process Python app (FastAPI + SQLite) for the Individual Assignment 1 DevOps course project.
+Assignment 1 built it as one FastAPI + SQLite process. Assignment 2 splits it into two services with their own SQL Server databases, a static UI, and CI/CD to Azure.
+
+**Live URL:** not live yet. The Static Web App could not be created (see [Azure deployment](#azure-deployment)).
 
 ## What it does
 
 - Add a satellite by its NORAD ID (for example, the ISS is `25544`) and OrbitWatch fetches its latest TLE from Celestrak.
 - Shows the satellite's live latitude, longitude and altitude, updated every 2 seconds.
 - Draws the satellite's orbit for the next ~95 minutes on a 3D Earth (Three.js).
-- Caches TLEs in SQLite and refreshes them when they get old. If Celestrak is down, it keeps using the last TLE it saved.
+- Caches TLEs and refreshes them when they get old. If Celestrak is down, it keeps using the last TLE it saved.
 
 ## Architecture
 
-One FastAPI process serves both the API and the frontend. The backend is split into two domains:
+| Part | Folder | What it owns | Database |
+|---|---|---|---|
+| **catalog** service | `services/catalog` | Which satellites are tracked, and fetching their TLEs from Celestrak | `catalog` (`satellites`, `tle_cache`) |
+| **propagation** service | `services/propagation` | The orbit maths: TLE → position and track | `propagation` (`tle_cache`) |
+| UI | `ui/` | Static HTML/JS globe that calls both services from the browser | none |
 
-- **Catalog** (`app/catalog/`): which satellites are tracked, plus fetching and caching their TLEs.
-- **Propagation** (`app/propagation/`): the orbit maths. `engine.py` is pure functions with no HTTP or database code.
+The cross-seam call is server side: propagation asks the catalog for a TLE with `GET /api/satellites/{norad_id}/tle`, using `CATALOG_URL` and a timeout. If the catalog is down, propagation uses its cached TLE and marks the response `stale_tle: true`; with no cached copy it returns `503 "Catalog service is unavailable"`. See `ADR.md` (6-10) for the decisions and `system.yaml` for the machine-readable description.
 
-`app/database.py` creates the SQLite connection and tables. See `ADR.md` for the design decisions.
+Each service:
+- applies its numbered SQL migrations (`migrations/NNN_*.sql`) on startup, recording them in `schema_migrations`
+- serves `GET /health` (`200` with `{"status","db","version"}` when it can read and write its database, `503` otherwise)
+- logs one line per request (method, path, status, duration)
 
-## Requirements
+## Run locally (Docker Compose)
 
-- Python 3.10 or newer
-- Internet access (Celestrak for TLE data; the browser loads Three.js and the Earth texture from a CDN)
-
-## Setup and run
+Requirements: Docker. On Apple Silicon, turn on Rosetta emulation in Docker Desktop for the SQL Server image.
 
 ```bash
 git clone https://github.com/neo0oo/OrbitWatch
 cd OrbitWatch
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-python3 -m app.main
+docker compose up --build
 ```
 
-Then open http://localhost:8000, type `25544` into "Add by NORAD ID" and click Add.
+| URL | What |
+|---|---|
+| http://localhost:3000 | UI (nginx serving `ui/`) |
+| http://localhost:8001/docs | catalog API |
+| http://localhost:8002/docs | propagation API |
 
-The tables are created automatically on startup, so there is no manual setup or migration step.
+Compose starts SQL Server, runs `db/init.sql` once (the `db-init` service creates both databases and the `catalog_user` and `propagation_user` logins, idempotently), then starts both services. The local passwords default to throwaway values. Override them with `MSSQL_SA_PASSWORD`, `CATALOG_DB_PASSWORD` and `PROPAGATION_DB_PASSWORD` in a `.env` file (git-ignored, see `.env.example`).
+
+To see partial failure: `docker compose stop catalog`. Propagation keeps serving positions from its cached TLEs.
+
+## Run a single service
+
+Start only the database, then run one service from its folder:
+
+```bash
+docker compose up -d sqlserver db-init
+cd services/catalog
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+DATABASE_URL="mssql://catalog_user:LocalOnly_Catalog_Pass1@localhost:1433/catalog" PORT=8001 python -m app.main
+```
+
+For propagation, use `services/propagation`, `propagation_user`/`LocalOnly_Prop_Pass1`, the `propagation` database and `PORT=8002`. It finds the catalog through `CATALOG_URL` (default `http://localhost:8001`).
 
 ## Configuration
 
-Everything is configured with environment variables. All of them have defaults, so none are required.
+Every variable each service reads is listed, with defaults, in `system.yaml`. The main ones:
 
-| Variable | Default | What it does |
-|---|---|---|
-| `PORT` | `8000` | Port the server listens on (it binds to `0.0.0.0`) |
-| `DATA_DIR` | `./data` | Folder for the SQLite file, which is `DATA_DIR/orbitwatch.db` |
-| `CELESTRAK_URL` | `https://celestrak.org/NORAD/elements/gp.php` | Where TLEs are fetched from |
-| `TLE_REFRESH_HOURS` | `6` | How old a cached TLE can be before it is refetched |
+| Variable | Service | Default | What it does |
+|---|---|---|---|
+| `PORT` | both | `8000` | Port the service listens on |
+| `DATABASE_URL` | both | none (secret) | `mssql://user:password@host:1433/database` |
+| `ALLOWED_ORIGINS` | both | `http://localhost:3000` | Origins allowed by CORS, comma separated |
+| `GIT_SHA` | both | `dev` | Version reported by `/health` |
+| `CATALOG_URL` | propagation | `http://localhost:8001` | Base URL of the catalog |
+| `CATALOG_TIMEOUT_S` | propagation | `5` | Timeout for calls to the catalog |
 
-Example: `PORT=9000 DATA_DIR=/tmp/orbitwatch python3 -m app.main`
-
-## API
-
-Interactive docs are at http://localhost:8000/docs.
-
-| Method | Path | What it does |
-|---|---|---|
-| GET | `/api/satellites` | List tracked satellites |
-| POST | `/api/satellites` | Add a satellite. Body: `{"norad_id": 25544}` |
-| DELETE | `/api/satellites/{norad_id}` | Remove a satellite and its cached TLE |
-| GET | `/api/satellites/{norad_id}/position` | Current latitude, longitude and altitude |
-| GET | `/api/satellites/{norad_id}/track` | Upcoming orbit points (`minutes`, `step_seconds` query params) |
+The UI reads the two service URLs from `ui/config.js`. The committed file points at localhost; the CD job overwrites it with the deployed URLs.
 
 ## Tests and coverage
 
+The tests need the SQL Server from compose, as in CI:
+
 ```bash
-python3 -m pytest -v
-python3 -m pytest --cov=app --cov-report=term-missing
+docker compose run --rm db-init
+cd services/catalog          # or services/propagation
+pip install -r requirements.txt
+DATABASE_URL="mssql://catalog_user:LocalOnly_Catalog_Pass1@localhost:1433/catalog" \
+  python -m pytest --cov=app --cov-report=term-missing --cov-fail-under=70
 ```
 
-**Coverage result: 82% total.**
+Propagation's `tests/test_seam.py` is the cross-seam integration test. `main.py` and `routes.py` are excluded from coverage in `.coveragerc`.
 
-Coverage is measured on the core logic of both domains. `app/main.py` and the `routes.py` files are excluded in `.coveragerc` because they are thin glue code. The tests run offline: Celestrak is faked and the database tests use a temporary SQLite file. The real network call in `fetch_tle`, the routes and the frontend were checked by hand.
+## CI/CD
 
-## Project structure
+One workflow, `.github/workflows/ci.yml`:
 
+- **Every push and pull request:** lint (ruff), check each `openapi.json` matches the code, run tests with a 70% coverage gate against a SQL Server container (never Azure SQL), validate `system.yaml` and the OpenAPI files, and build both images.
+- **Push to `main` only, after all of the above pass on the same commit:**
+  - push the images to GHCR, tagged with the commit SHA
+  - `infra/deploy.sh` creates or updates each container app with 0–1 replicas, the database connection string as a Container Apps secret, and CORS limited to the UI's origin
+  - write `ui/config.js` with the deployed URLs and upload `ui/` to the Static Web App
+  - fail the run if either `/health` does not return `200` within 6 minutes; this allows for a cold start and the database resuming from pause
+
+## Azure deployment
+
+Everything is in resource group `rg-nmedic` (subscription "Azure for Students"), named with the prefix `nmedic-ieu2024`:
+
+| Resource | Type | Region | Created by |
+|---|---|---|---|
+| `nmedic-ieu2024-sql` | SQL logical server (firewall: allow Azure services) | spaincentral | `infra/setup.sh` |
+| `nmedic-ieu2024-catalog-db` | Azure SQL Database, serverless GP Gen5, 0.5–1 vCore, auto-pause 15 min, 2 GB, local backups | spaincentral | `infra/setup.sh` |
+| `nmedic-ieu2024-propagation-db` | same | spaincentral | `infra/setup.sh` |
+| `nmedic-ieu2024-env` | Container Apps environment, Consumption only, no Log Analytics | spaincentral | `infra/setup.sh` |
+| `nmedic-ieu2024-catalog` | Container App, 0–1 replicas | spaincentral | the pipeline |
+| `nmedic-ieu2024-propagation` | Container App, 0–1 replicas | spaincentral | the pipeline |
+| `nmedic-ieu2024-ui` | Static Web App (Free) | **not created** | `infra/setup.sh` |
+
+The subscription only allows polandcentral, denmarkeast, switzerlandnorth, belgiumcentral and spaincentral, which is why everything is in spaincentral. Static Web Apps is only offered in westus2, centralus, eastus2, westeurope and eastasia, so the policy refuses it (`RequestDisallowedByAzure`). Until that is resolved, the pipeline skips the UI upload with a warning.
+
+### Reproducing the initial setup
+
+Run once from a machine with the Azure CLI (logged in) and Docker:
+
+```bash
+az account set --subscription "<subscription id>"
+export SQL_ADMIN_PASSWORD="Ow_$(openssl rand -hex 16)_A1"
+export CATALOG_DB_PASSWORD="Ow_$(openssl rand -hex 16)_A1"
+export PROPAGATION_DB_PASSWORD="Ow_$(openssl rand -hex 16)_A1"
+infra/setup.sh all
 ```
-OrbitWatch/
-├── app/
-│   ├── main.py            # app entry point
-│   ├── config.py          # environment variables
-│   ├── database.py        # SQLite connection and schema
-│   ├── catalog/           # domain 1: satellites and TLE caching
-│   └── propagation/       # domain 2: orbit maths
-├── frontend/              # Three.js globe (index.html, main.js, style.css)
-├── tests/
-├── ADR.md                 # architecture decision records
-├── AI_USAGE.md            # AI usage log
-└── requirements.txt
-```
+
+`infra/setup.sh` takes one step at a time too (`extension`, `sql-server`, `databases`, `db-users`, `verify-isolation`, `env`, `swa`). The `db-users` step creates `catalog_user` and `propagation_user` as contained users, each `db_owner` of its own database only. `verify-isolation` proves each one cannot log in to the other database. Both steps open the firewall to your IP only while they run.
+
+Save the passwords in a password manager; they are never written to the repo.
+
+### GitHub Actions secrets
+
+| Secret | Value |
+|---|---|
+| `AZURE_CREDENTIALS` | Service principal JSON with Contributor on `rg-nmedic` |
+| `CATALOG_DB_PASSWORD` | Password of `catalog_user` |
+| `PROPAGATION_DB_PASSWORD` | Password of `propagation_user` |
+| `SWA_DEPLOYMENT_TOKEN` | `az staticwebapp secrets list -n nmedic-ieu2024-ui --query properties.apiKey -o tsv` (once the Static Web App exists) |
+| `GHCR_PULL_TOKEN` | Only if the GHCR packages stay private: a token with `read:packages`, so Container Apps can pull images on a cold start |
 
 ## Limitations
 
 - OrbitWatch shows where a satellite is, not when it will pass over a given place (pass prediction was deliberately left out, see ADR-5).
 - Positions are only as accurate as the TLE, which is why TLEs are refreshed regularly.
-
-## Container contract check
-
-Result of running the provided `run.sh` against this repo:
-
-```
-=== SDD Assignment 1 contract check ===
-Repository: /Users/neomedic/OrbitWatch
-
-==> Repository shape
-  PASS  one Dockerfile, one manifest (requirements.txt)
-
-==> Build from a clean context, no build args
-  PASS  image built
-  PASS  image size 58 MB
-
-==> Start on PORT=8000 and reach it from the host
-  PASS  HTTP 200 from http://localhost:8000/
-
-==> SQLite file under DATA_DIR
-  PASS  found in /data: orbitwatch.db
-
-==> Data persists, and a second boot does not re-seed
-  PASS  volume at /data persists
-  PASS  row counts unchanged across restart: satellites=0 tle_cache=0
-
-==> PORT override is honoured (not hardcoded)
-  PASS  HTTP 200 from http://localhost:9123/
-
-=== ALL CHECKS PASSED ===
-```
+- After 15 idle minutes a database pauses and the containers scale to zero, so the first request afterwards can take up to about a minute.
