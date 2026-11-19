@@ -4,7 +4,7 @@ OrbitWatch tracks satellites in real time. It pulls real orbital data (TLEs) fro
 
 Assignment 1 built it as one FastAPI + SQLite process. Assignment 2 splits it into two services with their own SQL Server databases, a static UI, and CI/CD to Azure.
 
-**Live URL:** TBD (the storage static website endpoint of `nmedicieu2024ui`, see [Azure deployment](#azure-deployment)).
+**Live URL:** https://nmedicieu2024ui.z43.web.core.windows.net (live once the first deploy from `main` has run)
 
 ## What it does
 

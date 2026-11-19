@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=./system.schema.json
 student: nmedic.ieu2024
 prefix: nmedic-ieu2024
-public_url: https://nmedicieu2024ui.TBD.web.core.windows.net   # TBD: replace with the storage static website endpoint
+public_url: https://nmedicieu2024ui.z43.web.core.windows.net
 ui:
   path: ui
   storage_account: nmedicieu2024ui
