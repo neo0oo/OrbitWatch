@@ -6,7 +6,7 @@
 #   - 2 serverless databases          ${PREFIX}-catalog-db, ${PREFIX}-propagation-db
 #   - 1 contained user per database   catalog_user, propagation_user (db_owner of their own DB only)
 #   - 1 Container Apps environment    ${PREFIX}-env            (LOCATION, no Log Analytics)
-#   - 1 Static Web App (Free)         ${PREFIX}-ui             (SWA_LOCATION)
+#   - 1 storage account for the UI    ${UI_STORAGE}            (LOCATION, static website, Standard LRS)
 # The Container Apps themselves are created by the CI/CD pipeline, not here.
 #
 # Secrets are read from the environment only; nothing secret is stored in this file:
@@ -15,7 +15,7 @@
 #   export SQL_ADMIN_PASSWORD="Ow_$(openssl rand -hex 16)_A1"
 #
 # Usage: infra/setup.sh <step>
-#   steps: extension | sql-server | databases | db-users | verify-isolation | env | swa | all
+#   steps: extension | sql-server | databases | db-users | verify-isolation | env | ui-storage | all
 # Optional: AZURE_SUBSCRIPTION (name or id) to select the subscription first.
 
 set -euo pipefail
@@ -23,14 +23,13 @@ set -euo pipefail
 PREFIX="nmedic-ieu2024"
 RG="rg-nmedic"
 LOCATION="spaincentral"   # allowed by the subscription's region policy
-SWA_LOCATION="westeurope"   # SWA regions: westus2, centralus, eastus2, westeurope, eastasia. NOTE: the Azure for Students region policy currently refuses all of them (RequestDisallowedByAzure)
 SQL_ADMIN_USER="orbitadmin"
 
 SQL_SERVER="${PREFIX}-sql"
 CATALOG_DB="${PREFIX}-catalog-db"
 PROPAGATION_DB="${PREFIX}-propagation-db"
 ACA_ENV="${PREFIX}-env"
-SWA_NAME="${PREFIX}-ui"
+UI_STORAGE="${PREFIX//-/}ui"   # storage names allow no hyphens: nmedicieu2024ui
 AUTO_PAUSE_DELAY="${AUTO_PAUSE_DELAY:-15}"   # minutes; Azure's minimum for serverless is 15
 SQLCMD_IMAGE="mcr.microsoft.com/mssql/server:2022-latest"
 TEMP_RULE="setup-temp"
@@ -175,11 +174,14 @@ step_env() {
     --query "{name:name, location:location, state:properties.provisioningState}" -o table
 }
 
-step_swa() {
-  az staticwebapp create -g "$RG" -n "$SWA_NAME" -l "$SWA_LOCATION" --sku Free \
-    --query "{name:name, location:location, url:defaultHostname}" -o table
-  echo "URL: https://$(az staticwebapp show -g "$RG" -n "$SWA_NAME" --query defaultHostname -o tsv)"
-  echo "Deployment token: az staticwebapp secrets list -g $RG -n $SWA_NAME --query properties.apiKey -o tsv"
+step_ui_storage() {
+  # The UI is static files served from the storage account's $web container (static website).
+  az storage account create -g "$RG" -n "$UI_STORAGE" -l "$LOCATION" \
+    --sku Standard_LRS --kind StorageV2 --min-tls-version TLS1_2 --allow-blob-public-access false \
+    --query "{name:name, location:location, sku:sku.name}" -o table
+  az storage blob service-properties update --account-name "$UI_STORAGE" --auth-mode key \
+    --static-website --index-document index.html --404-document index.html -o none
+  echo "UI URL: $(az storage account show -g "$RG" -n "$UI_STORAGE" --query primaryEndpoints.web -o tsv)"
 }
 
 case "${1:-}" in
@@ -189,10 +191,9 @@ case "${1:-}" in
   db-users)         step_db_users ;;
   verify-isolation) step_verify_isolation ;;
   env)              step_env ;;
-  swa)              step_swa ;;
+  ui-storage)       step_ui_storage ;;
   all)
     step_extension; step_sql_server; step_databases; step_db_users
-    step_verify_isolation; step_env
-    step_swa || echo "WARNING: Static Web App not created (see the SWA_LOCATION note above)" >&2 ;;
+    step_verify_isolation; step_env; step_ui_storage ;;
   *) sed -n '2,21p' "$0"; exit 2 ;;
 esac

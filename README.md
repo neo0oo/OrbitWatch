@@ -4,7 +4,7 @@ OrbitWatch tracks satellites in real time. It pulls real orbital data (TLEs) fro
 
 Assignment 1 built it as one FastAPI + SQLite process. Assignment 2 splits it into two services with their own SQL Server databases, a static UI, and CI/CD to Azure.
 
-**Live URL:** not live yet. The Static Web App could not be created (see [Azure deployment](#azure-deployment)).
+**Live URL:** TBD (the storage static website endpoint of `nmedicieu2024ui`, see [Azure deployment](#azure-deployment)).
 
 ## What it does
 
@@ -99,7 +99,7 @@ One workflow, `.github/workflows/ci.yml`:
 - **Push to `main` only, after all of the above pass on the same commit:**
   - push the images to GHCR, tagged with the commit SHA
   - `infra/deploy.sh` creates or updates each container app with 0–1 replicas, the database connection string as a Container Apps secret, and CORS limited to the UI's origin
-  - write `ui/config.js` with the deployed URLs and upload `ui/` to the Static Web App
+  - write `ui/config.js` with the deployed URLs and upload `ui/` to the `$web` container of the UI storage account
   - fail the run if either `/health` does not return `200` within 6 minutes; this allows for a cold start and the database resuming from pause
 
 ## Azure deployment
@@ -114,9 +114,9 @@ Everything is in resource group `rg-nmedic` (subscription "Azure for Students"),
 | `nmedic-ieu2024-env` | Container Apps environment, Consumption only, no Log Analytics | spaincentral | `infra/setup.sh` |
 | `nmedic-ieu2024-catalog` | Container App, 0–1 replicas | spaincentral | the pipeline |
 | `nmedic-ieu2024-propagation` | Container App, 0–1 replicas | spaincentral | the pipeline |
-| `nmedic-ieu2024-ui` | Static Web App (Free) | **not created** | `infra/setup.sh` |
+| `nmedicieu2024ui` | Storage account (StorageV2, Standard LRS) serving the UI as a static website | spaincentral | `infra/setup.sh` |
 
-The subscription only allows polandcentral, denmarkeast, switzerlandnorth, belgiumcentral and spaincentral, which is why everything is in spaincentral. Static Web Apps is only offered in westus2, centralus, eastus2, westeurope and eastasia, so the policy refuses it (`RequestDisallowedByAzure`). Until that is resolved, the pipeline skips the UI upload with a warning.
+The subscription only allows polandcentral, denmarkeast, switzerlandnorth, belgiumcentral and spaincentral, which is why everything is in spaincentral. The storage account name is the prefix without hyphens plus `ui`, because storage names cannot contain hyphens.
 
 ### Reproducing the initial setup
 
@@ -130,7 +130,7 @@ export PROPAGATION_DB_PASSWORD="Ow_$(openssl rand -hex 16)_A1"
 infra/setup.sh all
 ```
 
-`infra/setup.sh` takes one step at a time too (`extension`, `sql-server`, `databases`, `db-users`, `verify-isolation`, `env`, `swa`). The `db-users` step creates `catalog_user` and `propagation_user` as contained users, each `db_owner` of its own database only. `verify-isolation` proves each one cannot log in to the other database. Both steps open the firewall to your IP only while they run.
+`infra/setup.sh` takes one step at a time too (`extension`, `sql-server`, `databases`, `db-users`, `verify-isolation`, `env`, `ui-storage`). The `db-users` step creates `catalog_user` and `propagation_user` as contained users, each `db_owner` of its own database only. `verify-isolation` proves each one cannot log in to the other database. Both steps open the firewall to your IP only while they run.
 
 Save the passwords in a password manager; they are never written to the repo.
 
@@ -141,7 +141,6 @@ Save the passwords in a password manager; they are never written to the repo.
 | `AZURE_CREDENTIALS` | Service principal JSON with Contributor on `rg-nmedic` |
 | `CATALOG_DB_PASSWORD` | Password of `catalog_user` |
 | `PROPAGATION_DB_PASSWORD` | Password of `propagation_user` |
-| `SWA_DEPLOYMENT_TOKEN` | `az staticwebapp secrets list -n nmedic-ieu2024-ui --query properties.apiKey -o tsv` (once the Static Web App exists) |
 | `GHCR_PULL_TOKEN` | Only if the GHCR packages stay private: a token with `read:packages`, so Container Apps can pull images on a cold start |
 
 ## Limitations
