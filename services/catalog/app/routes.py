@@ -17,6 +17,7 @@ class Satellite(BaseModel):
     norad_id: int
     name: str
     category: str
+    operator: str
     added_at: datetime
 
 
