@@ -192,6 +192,7 @@ case "${1:-}" in
   swa)              step_swa ;;
   all)
     step_extension; step_sql_server; step_databases; step_db_users
-    step_verify_isolation; step_env; step_swa ;;
+    step_verify_isolation; step_env
+    step_swa || echo "WARNING: Static Web App not created (see the SWA_LOCATION note above)" >&2 ;;
   *) sed -n '2,21p' "$0"; exit 2 ;;
 esac
