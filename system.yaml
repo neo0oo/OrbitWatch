@@ -7,7 +7,7 @@ ui:
   static_web_app: nmedic-ieu2024-ui
   calls: [catalog, propagation]
 azure:
-  resource_group: rg-sdd-3b-g2
+  resource_group: rg-nmedic
   container_apps_environment: nmedic-ieu2024-env
   sql_server: nmedic-ieu2024-sql
   registry: ghcr.io/neo0oo
