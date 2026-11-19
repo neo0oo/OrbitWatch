@@ -1,13 +1,13 @@
 # yaml-language-server: $schema=./system.schema.json
 student: nmedic.ieu2024
 prefix: nmedic-ieu2024
-public_url: https://TBD.azurestaticapps.net
+public_url: https://nmedicieu2024ui.z43.web.core.windows.net
 ui:
   path: ui
-  static_web_app: nmedic-ieu2024-ui
+  storage_account: nmedicieu2024ui
   calls: [catalog, propagation]
 azure:
-  resource_group: rg-sdd-3b-g2
+  resource_group: rg-nmedic
   container_apps_environment: nmedic-ieu2024-env
   sql_server: nmedic-ieu2024-sql
   registry: ghcr.io/neo0oo

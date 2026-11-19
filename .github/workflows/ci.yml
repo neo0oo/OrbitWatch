@@ -71,9 +71,100 @@ jobs:
   build:
     name: Build ${{ matrix.service }} image
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     strategy:
       matrix:
         service: [catalog, propagation]
+    env:
+      IMAGE: ghcr.io/neo0oo/orbitwatch-${{ matrix.service }}:${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
-      - run: docker build -t orbitwatch-${{ matrix.service }}:${{ github.sha }} services/${{ matrix.service }}
+      - run: docker build -t "$IMAGE" services/${{ matrix.service }}
+      - name: Push to GHCR (main only)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker push "$IMAGE"
+
+  deploy:
+    name: Deploy to Azure
+    # CD: only on a push to main, and only if every CI job passed on this same commit.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [test, validate, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write   # lets azure/login exchange GitHub's OIDC token for the managed identity
+    concurrency:
+      group: deploy-azure
+      cancel-in-progress: false
+    env:
+      RG: rg-nmedic
+      PREFIX: nmedic-ieu2024
+      REGISTRY: ghcr.io/neo0oo
+      GHCR_USER: ${{ github.repository_owner }}
+      GHCR_PULL_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
+      UI_STORAGE: nmedicieu2024ui
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sign in to Azure as the nmedic-ieu2024-github managed identity
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Install the containerapp CLI extension
+        run: az extension add --name containerapp --upgrade --only-show-errors
+
+      - name: Find the UI origin for CORS
+        run: |
+          # The storage static website endpoint, e.g. https://<account>.z6.web.core.windows.net/ (trailing / removed)
+          web="$(az storage account show -g "$RG" -n "$UI_STORAGE" --query primaryEndpoints.web -o tsv)"
+          echo "UI_ORIGIN=${web%/}" >> "$GITHUB_ENV"
+
+      - name: Deploy catalog
+        env:
+          DB_PASSWORD: ${{ secrets.CATALOG_DB_PASSWORD }}
+        run: |
+          url="$(infra/deploy.sh catalog "$REGISTRY/orbitwatch-catalog:${{ github.sha }}" \
+            "ALLOWED_ORIGINS=$UI_ORIGIN" "GIT_SHA=${{ github.sha }}")"
+          echo "CATALOG_URL=$url" >> "$GITHUB_ENV"
+
+      - name: Deploy propagation
+        env:
+          DB_PASSWORD: ${{ secrets.PROPAGATION_DB_PASSWORD }}
+        run: |
+          url="$(infra/deploy.sh propagation "$REGISTRY/orbitwatch-propagation:${{ github.sha }}" \
+            "ALLOWED_ORIGINS=$UI_ORIGIN" "GIT_SHA=${{ github.sha }}" "CATALOG_URL=$CATALOG_URL")"
+          echo "PROPAGATION_URL=$url" >> "$GITHUB_ENV"
+
+      - name: Write the UI config with the deployed service URLs
+        run: |
+          cat > ui/config.js <<EOF
+          window.CONFIG = {
+            CATALOG_URL: "$CATALOG_URL",
+            PROPAGATION_URL: "$PROPAGATION_URL",
+          };
+          EOF
+          cat ui/config.js
+
+      - name: Deploy the UI to the storage static website
+        run: |
+          az storage blob upload-batch --account-name "$UI_STORAGE" --auth-mode key \
+            --destination '$web' --source ui --overwrite --only-show-errors -o none
+          echo "UI deployed to $UI_ORIGIN"
+
+      - name: Health check (cold start and database resume allowed)
+        run: |
+          for url in "$CATALOG_URL" "$PROPAGATION_URL"; do
+            deadline=$((SECONDS + 360))
+            until curl -fsS --max-time 60 "$url/health"; do
+              if [ $SECONDS -ge $deadline ]; then echo "::error::$url/health did not return 200 within 6 minutes"; exit 1; fi
+              echo " -> $url not healthy yet, retrying in 15s"; sleep 15
+            done
+            echo " <- $url healthy"
+          done
