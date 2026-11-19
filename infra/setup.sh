@@ -34,7 +34,9 @@ PROPAGATION_DB="${PREFIX}-propagation-db"
 ACA_ENV="${PREFIX}-env"
 UI_STORAGE="${PREFIX//-/}ui"   # storage names allow no hyphens: nmedicieu2024ui
 GITHUB_IDENTITY="${PREFIX}-github"
-GITHUB_REPO="neo0oo/OrbitWatch"
+# GitHub's OIDC subject includes the owner and repo IDs:
+#   gh api repos/neo0oo/OrbitWatch --jq '"repo:\(.owner.login)@\(.owner.id)/\(.name)@\(.id)"'
+GITHUB_OIDC_SUBJECT="repo:neo0oo@178232820/OrbitWatch@1394910778:ref:refs/heads/main"
 AUTO_PAUSE_DELAY="${AUTO_PAUSE_DELAY:-15}"   # minutes; Azure's minimum for serverless is 15
 SQLCMD_IMAGE="mcr.microsoft.com/mssql/server:2022-latest"
 TEMP_RULE="setup-temp"
@@ -200,7 +202,7 @@ step_github_identity() {
   fi
   az identity federated-credential create -g "$RG" --identity-name "$GITHUB_IDENTITY" -n github-main \
     --issuer https://token.actions.githubusercontent.com \
-    --subject "repo:${GITHUB_REPO}:ref:refs/heads/main" \
+    --subject "$GITHUB_OIDC_SUBJECT" \
     --audiences api://AzureADTokenExchange --query "{name:name, subject:subject}" -o table
   echo "GitHub secrets for azure/login:"
   echo "  AZURE_CLIENT_ID       $(az identity show -g "$RG" -n "$GITHUB_IDENTITY" --query clientId -o tsv)"
