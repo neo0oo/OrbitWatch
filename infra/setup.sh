@@ -5,7 +5,8 @@
 #   - 1 SQL logical server            ${PREFIX}-sql            (LOCATION)
 #   - 2 serverless databases          ${PREFIX}-catalog-db, ${PREFIX}-propagation-db
 #   - 1 contained user per database   catalog_user, propagation_user (db_owner of their own DB only)
-#   - 1 Container Apps environment    ${PREFIX}-env            (LOCATION, no Log Analytics)
+#   - 1 Container Apps environment    ${PREFIX}-env            (LOCATION, Consumption only)
+#     Azure also creates a Log Analytics workspace for it (container logs, free up to 5 GB/month).
 #   - 1 storage account for the UI    ${UI_STORAGE}            (LOCATION, static website, Standard LRS)
 # The Container Apps themselves are created by the CI/CD pipeline, not here.
 #
@@ -95,6 +96,11 @@ remove_temp_ip_rule() {
 
 step_extension() {
   az extension add --name containerapp --upgrade -o none
+  # A new subscription must enable each service once before using it (free, creates nothing).
+  local ns
+  for ns in Microsoft.Sql Microsoft.App Microsoft.OperationalInsights Microsoft.Storage; do
+    az provider register --namespace "$ns" --wait
+  done
 }
 
 step_sql_server() {
@@ -169,8 +175,10 @@ step_verify_isolation() {
 }
 
 step_env() {
+  # Azure creates the Log Analytics workspace for the environment (log-analytics is set
+  # explicitly because the CLI default changes to azure-monitor in 2.93.0).
   az containerapp env create -g "$RG" -n "$ACA_ENV" -l "$LOCATION" \
-    --enable-workload-profiles false --logs-destination none \
+    --enable-workload-profiles false --logs-destination log-analytics \
     --query "{name:name, location:location, state:properties.provisioningState}" -o table
 }
 

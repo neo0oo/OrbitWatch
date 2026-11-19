@@ -111,7 +111,8 @@ Everything is in resource group `rg-nmedic` (subscription "Azure for Students"),
 | `nmedic-ieu2024-sql` | SQL logical server (firewall: allow Azure services) | spaincentral | `infra/setup.sh` |
 | `nmedic-ieu2024-catalog-db` | Azure SQL Database, serverless GP Gen5, 0.5–1 vCore, auto-pause 15 min, 2 GB, local backups | spaincentral | `infra/setup.sh` |
 | `nmedic-ieu2024-propagation-db` | same | spaincentral | `infra/setup.sh` |
-| `nmedic-ieu2024-env` | Container Apps environment, Consumption only, no Log Analytics | spaincentral | `infra/setup.sh` |
+| `nmedic-ieu2024-env` | Container Apps environment, Consumption only | spaincentral | `infra/setup.sh` |
+| `workspace-rgnmedicZfnA` | Log Analytics workspace that Azure creates with the environment; stores the containers' logs (free up to 5 GB/month) | spaincentral | Azure, with the environment |
 | `nmedic-ieu2024-catalog` | Container App, 0–1 replicas | spaincentral | the pipeline |
 | `nmedic-ieu2024-propagation` | Container App, 0–1 replicas | spaincentral | the pipeline |
 | `nmedicieu2024ui` | Storage account (StorageV2, Standard LRS) serving the UI as a static website | spaincentral | `infra/setup.sh` |
