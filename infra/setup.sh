@@ -8,6 +8,8 @@
 #   - 1 Container Apps environment    ${PREFIX}-env            (LOCATION, Consumption only)
 #     Azure also creates a Log Analytics workspace for it (container logs, free up to 5 GB/month).
 #   - 1 storage account for the UI    ${UI_STORAGE}            (LOCATION, static website, Standard LRS)
+#   - 1 managed identity for CI/CD    ${PREFIX}-github         (Contributor on the resource group only;
+#     GitHub Actions on main signs in as it through a federated credential, so there is no password)
 # The Container Apps themselves are created by the CI/CD pipeline, not here.
 #
 # Secrets are read from the environment only; nothing secret is stored in this file:
@@ -16,7 +18,7 @@
 #   export SQL_ADMIN_PASSWORD="Ow_$(openssl rand -hex 16)_A1"
 #
 # Usage: infra/setup.sh <step>
-#   steps: extension | sql-server | databases | db-users | verify-isolation | env | ui-storage | all
+#   steps: extension | sql-server | databases | db-users | verify-isolation | env | ui-storage | github-identity | all
 # Optional: AZURE_SUBSCRIPTION (name or id) to select the subscription first.
 
 set -euo pipefail
@@ -31,6 +33,8 @@ CATALOG_DB="${PREFIX}-catalog-db"
 PROPAGATION_DB="${PREFIX}-propagation-db"
 ACA_ENV="${PREFIX}-env"
 UI_STORAGE="${PREFIX//-/}ui"   # storage names allow no hyphens: nmedicieu2024ui
+GITHUB_IDENTITY="${PREFIX}-github"
+GITHUB_REPO="neo0oo/OrbitWatch"
 AUTO_PAUSE_DELAY="${AUTO_PAUSE_DELAY:-15}"   # minutes; Azure's minimum for serverless is 15
 SQLCMD_IMAGE="mcr.microsoft.com/mssql/server:2022-latest"
 TEMP_RULE="setup-temp"
@@ -98,7 +102,7 @@ step_extension() {
   az extension add --name containerapp --upgrade -o none
   # A new subscription must enable each service once before using it (free, creates nothing).
   local ns
-  for ns in Microsoft.Sql Microsoft.App Microsoft.OperationalInsights Microsoft.Storage; do
+  for ns in Microsoft.Sql Microsoft.App Microsoft.OperationalInsights Microsoft.Storage Microsoft.ManagedIdentity; do
     az provider register --namespace "$ns" --wait
   done
 }
@@ -182,6 +186,28 @@ step_env() {
     --query "{name:name, location:location, state:properties.provisioningState}" -o table
 }
 
+step_github_identity() {
+  # Students cannot register apps (service principals) in the IE directory, so the pipeline
+  # signs in as a user-assigned managed identity instead, using GitHub's OIDC token.
+  local principal_id rg_id
+  az identity create -g "$RG" -n "$GITHUB_IDENTITY" -l "$LOCATION" \
+    --query "{name:name, location:location}" -o table
+  principal_id="$(az identity show -g "$RG" -n "$GITHUB_IDENTITY" --query principalId -o tsv)"
+  rg_id="$(az group show -n "$RG" --query id -o tsv)"
+  if [ "$(az role assignment list --assignee "$principal_id" --scope "$rg_id" --role Contributor --query 'length(@)' -o tsv)" = "0" ]; then
+    az role assignment create --assignee-object-id "$principal_id" --assignee-principal-type ServicePrincipal \
+      --role Contributor --scope "$rg_id" --query "{role:roleDefinitionName, scope:scope}" -o table
+  fi
+  az identity federated-credential create -g "$RG" --identity-name "$GITHUB_IDENTITY" -n github-main \
+    --issuer https://token.actions.githubusercontent.com \
+    --subject "repo:${GITHUB_REPO}:ref:refs/heads/main" \
+    --audiences api://AzureADTokenExchange --query "{name:name, subject:subject}" -o table
+  echo "GitHub secrets for azure/login:"
+  echo "  AZURE_CLIENT_ID       $(az identity show -g "$RG" -n "$GITHUB_IDENTITY" --query clientId -o tsv)"
+  echo "  AZURE_TENANT_ID       $(az account show --query tenantId -o tsv)"
+  echo "  AZURE_SUBSCRIPTION_ID $(az account show --query id -o tsv)"
+}
+
 step_ui_storage() {
   # The UI is static files served from the storage account's $web container (static website).
   az storage account create -g "$RG" -n "$UI_STORAGE" -l "$LOCATION" \
@@ -200,8 +226,9 @@ case "${1:-}" in
   verify-isolation) step_verify_isolation ;;
   env)              step_env ;;
   ui-storage)       step_ui_storage ;;
+  github-identity)  step_github_identity ;;
   all)
     step_extension; step_sql_server; step_databases; step_db_users
-    step_verify_isolation; step_env; step_ui_storage ;;
+    step_verify_isolation; step_env; step_ui_storage; step_github_identity ;;
   *) sed -n '2,21p' "$0"; exit 2 ;;
 esac

@@ -116,6 +116,7 @@ Everything is in resource group `rg-nmedic` (subscription "Azure for Students"),
 | `nmedic-ieu2024-catalog` | Container App, 0–1 replicas | spaincentral | the pipeline |
 | `nmedic-ieu2024-propagation` | Container App, 0–1 replicas | spaincentral | the pipeline |
 | `nmedicieu2024ui` | Storage account (StorageV2, Standard LRS) serving the UI as a static website | spaincentral | `infra/setup.sh` |
+| `nmedic-ieu2024-github` | User-assigned managed identity the pipeline signs in as (Contributor on `rg-nmedic`) | spaincentral | `infra/setup.sh` |
 
 The subscription only allows polandcentral, denmarkeast, switzerlandnorth, belgiumcentral and spaincentral, which is why everything is in spaincentral. The storage account name is the prefix without hyphens plus `ui`, because storage names cannot contain hyphens.
 
@@ -131,7 +132,7 @@ export PROPAGATION_DB_PASSWORD="Ow_$(openssl rand -hex 16)_A1"
 infra/setup.sh all
 ```
 
-`infra/setup.sh` takes one step at a time too (`extension`, `sql-server`, `databases`, `db-users`, `verify-isolation`, `env`, `ui-storage`). The `db-users` step creates `catalog_user` and `propagation_user` as contained users, each `db_owner` of its own database only. `verify-isolation` proves each one cannot log in to the other database. Both steps open the firewall to your IP only while they run.
+`infra/setup.sh` takes one step at a time too (`extension`, `sql-server`, `databases`, `db-users`, `verify-isolation`, `env`, `ui-storage`, `github-identity`). The `db-users` step creates `catalog_user` and `propagation_user` as contained users, each `db_owner` of its own database only. `verify-isolation` proves each one cannot log in to the other database. Both steps open the firewall to your IP only while they run.
 
 Save the passwords in a password manager; they are never written to the repo.
 
@@ -139,7 +140,11 @@ Save the passwords in a password manager; they are never written to the repo.
 
 | Secret | Value |
 |---|---|
-| `AZURE_CREDENTIALS` | Service principal JSON with Contributor on `rg-nmedic` |
+| `AZURE_CLIENT_ID` | Client ID of the `nmedic-ieu2024-github` managed identity |
+| `AZURE_TENANT_ID` | Tenant (directory) ID |
+| `AZURE_SUBSCRIPTION_ID` | Subscription ID |
+
+The pipeline has no Azure password. Students cannot register apps (service principals) in the IE directory, so `infra/setup.sh github-identity` creates a user-assigned managed identity with Contributor on `rg-nmedic` only. It also adds a federated credential that trusts GitHub's OIDC tokens for `repo:neo0oo/OrbitWatch:ref:refs/heads/main`, so only workflow runs on `main` can sign in as it.
 | `CATALOG_DB_PASSWORD` | Password of `catalog_user` |
 | `PROPAGATION_DB_PASSWORD` | Password of `propagation_user` |
 | `GHCR_PULL_TOKEN` | Only if the GHCR packages stay private: a token with `read:packages`, so Container Apps can pull images on a cold start |
