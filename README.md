@@ -144,7 +144,7 @@ Save the passwords in a password manager; they are never written to the repo.
 | `AZURE_TENANT_ID` | Tenant (directory) ID |
 | `AZURE_SUBSCRIPTION_ID` | Subscription ID |
 
-The pipeline has no Azure password. Students cannot register apps (service principals) in the IE directory, so `infra/setup.sh github-identity` creates a user-assigned managed identity with Contributor on `rg-nmedic` only. It also adds a federated credential that trusts GitHub's OIDC tokens for `repo:neo0oo/OrbitWatch:ref:refs/heads/main`, so only workflow runs on `main` can sign in as it.
+The pipeline has no Azure password. Students cannot register apps (service principals) in the IE directory, so `infra/setup.sh github-identity` creates a user-assigned managed identity with Contributor on `rg-nmedic` only. It also adds a federated credential that trusts GitHub's OIDC tokens for `repo:neo0oo@178232820/OrbitWatch@1394910778:ref:refs/heads/main` (GitHub's subject format includes the owner and repo IDs), so only workflow runs on `main` can sign in as it.
 | `CATALOG_DB_PASSWORD` | Password of `catalog_user` |
 | `PROPAGATION_DB_PASSWORD` | Password of `propagation_user` |
 | `GHCR_PULL_TOKEN` | Only if the GHCR packages stay private: a token with `read:packages`, so Container Apps can pull images on a cold start |
