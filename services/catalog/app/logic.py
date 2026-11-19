@@ -57,7 +57,7 @@ def list_satellites():
     conn = get_connection()
     try:
         cur = conn.cursor()
-        cur.execute("SELECT norad_id, name, category, added_at FROM satellites ORDER BY name")
+        cur.execute("SELECT norad_id, name, category, operator, added_at FROM satellites ORDER BY name")
         return cur.fetchall()
     finally:
         conn.close()
