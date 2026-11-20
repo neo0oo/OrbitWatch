@@ -67,7 +67,7 @@
 **Consequences**: OrbitWatch shows where a satellite is but not when to look for it. It can be added later as new functions in engine.py that reuse the existing position code, without touching the catalog domain.
 
 ## 6. The split
-**Date**: 2026-11-17
+**Date**: 2026-11-16
 
 **Status**: Decided
 
@@ -91,3 +91,42 @@
 **Alternatives considered**: Alembic. Rejected because it adds SQLAlchemy and a tool I'd have to learn, while my runner is about 30 lines I can explain.
 
 **Consequences**: Propagation can serve a removed satellite's TLE for up to an hour. Recovery plan for a bad migration: it's forward-only, a failed migration rolls back because it commits together with its record, and the fix goes in a new migration, with Azure SQL's point-in-time restore if data was damaged.
+
+## 8. Serverless hosting on Azure
+**Date**: 2026-11-18
+
+**Status**: Decided
+
+**Context**: Both services, their two databases and the UI had to run on Azure in my own resource group (`rg-nmedic`, Spain Central because of the subscription's region policy), costing close to nothing while nobody is using it.
+
+**Decision**: Each service is a Container App in one Consumption environment with 0.25 vCPU, 0.5 GiB, and between 0 and 1 replicas. Each service has its own serverless Azure SQL database (Gen5, 0.5–1 vCore, auto-pause after 15 minutes, 2 GB, locally redundant backups), both on one SQL server. The UI is static files on a Storage static website. Idle, I only pay for database storage and a few cents of blob storage, because the apps scale to zero, the databases pause, and compute is billed per second only while it runs. The catch is that the first request after a quiet period hits a cold start: the container has to start and the database has to resume, which can take up to a minute. `get_connection()` covers this by retrying 5 times with growing delays, the pipeline's health check waits up to 6 minutes, and the UI shows "Service unavailable, try again shortly" and keeps polling. Migrations run at startup, which is safe because there is only ever one replica, and each migration is additive (like `003` adding a column with a default) so the old revision keeps working during the switch.
+
+**Alternatives considered**: An always-on App Service plan and a provisioned database. Rejected because they cost money every hour even with zero users, and a student project is idle most of the time.
+
+**Consequences**: Almost free, but slow on the first request. At 100x traffic I would set the minimum replicas to 1 or more to remove cold starts and raise the maximum, give the database a higher vCore limit or a provisioned tier with auto-pause off, and move migrations out of startup into a separate pipeline step. With several replicas, two of them could try to apply the same migration at the same time.
+
+## 9. Pipeline and testing
+**Date**: 2026-11-19
+
+**Status**: Decided
+
+**Context**: Assignment 2 deploys only through the pipeline, so CI is the only thing standing between a bad commit and the live site.
+
+**Decision**: Every push and PR runs, per service: ruff lint, a check that `openapi.json` still matches the code, and the tests against a real SQL Server started with `docker compose run db-init` (throwaway passwords, masked in the logs), with a 70% coverage gate. A second job validates `system.yaml` against `system.schema.json` and both OpenAPI files, and a third builds both images. Deploy runs only on a push to `main` and only if all of those passed on the same commit, and it ends with a health check on both services. `test_seam.py` tests the cross-seam flow inside propagation: it calls the real routes with FastAPI's `TestClient` and replaces `requests.get` in `catalog_client` with a fake, so I can make the catalog answer with a TLE, a 404, a 500, a timeout or a connection error, and check that propagation returns 200, 404 or 503, and serves its cached TLE marked `stale_tle` when the catalog is down.
+
+**Alternatives considered**: Testing against SQLite in CI would be faster, but the SQL is SQL Server-specific (`MERGE`, `IF NOT EXISTS`), so it wouldn't test the real queries. Calling a real catalog container from the seam test was rejected because faking it lets me produce failures, like timeouts, on purpose.
+
+**Consequences**: I deliberately don't test the UI, the real Celestrak call (`fetch_tle`), the catalog's routes (thin glue, excluded from coverage), `deploy.sh` or Azure itself. The real HTTP call between the two containers is only checked by hand with compose and by the health check after deploy.
+
+## 10. Not building event-based cache invalidation
+**Date**: 2026-11-20   
+
+**Status**: Decided
+
+**Context**: Since the split, propagation keeps its own copy of each TLE (ADR-7). When a satellite is removed from the catalog, propagation doesn't hear about it straight away.
+
+**Decision**: I didn't build a way for the catalog to tell propagation about changes, such as a "satellite removed" event on Azure Service Bus. Propagation finds out on its own: its cached TLE expires after `TLE_CACHE_HOURS`, and if the catalog then answers 404, it deletes its copy.
+
+**Alternatives considered**: A message queue or a webhook from the catalog to propagation. Rejected because it adds another Azure resource, retry and ordering logic, and a second way for the services to depend on each other, all to fix a delay of at most an hour on a hobby tracker.
+
+**Consequences**: A removed satellite can still be tracked for up to an hour, or longer while the catalog is down. It would be worth building if more services needed to react to catalog changes, if TLE updates had to reach users within seconds, or if traffic grew enough that polling the catalog became the bottleneck.
