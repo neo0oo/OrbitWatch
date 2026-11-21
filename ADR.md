@@ -30,7 +30,7 @@
 ## 3. SQLite Schema: Two Tables Linked by NORAD ID
 **Date**: 2026-10-06
 
-**Status**: Decided
+**Status**: Superseded by 7
 
 **Context**: The catalog needs to store which satellites are tracked and their latest TLE, and propagation needs to read that TLE without owning any data of its own.
 
@@ -43,7 +43,7 @@
 ## 4. Testing Approach
 **Date**: 2026-10-11
 
-**Status**: Decided
+**Status**: Superseded by 9
 
 **Context**: The brief needs at least 70% coverage on the core logic of both domains, but my app depends on the network (Celestrak) and a database, which are awkward to test.
 
@@ -99,7 +99,7 @@
 
 **Context**: Both services, their two databases and the UI had to run on Azure in my own resource group (`rg-nmedic`, Spain Central because of the subscription's region policy), costing close to nothing while nobody is using it.
 
-**Decision**: Each service is a Container App in one Consumption environment with 0.25 vCPU, 0.5 GiB, and between 0 and 1 replicas. Each service has its own serverless Azure SQL database (Gen5, 0.5–1 vCore, auto-pause after 15 minutes, 2 GB, locally redundant backups), both on one SQL server. The UI is static files on a Storage static website. Idle, I only pay for database storage and a few cents of blob storage, because the apps scale to zero, the databases pause, and compute is billed per second only while it runs. The catch is that the first request after a quiet period hits a cold start: the container has to start and the database has to resume, which can take up to a minute. `get_connection()` covers this by retrying 5 times with growing delays, the pipeline's health check waits up to 6 minutes, and the UI shows "Service unavailable, try again shortly" and keeps polling. Migrations run at startup, which is safe because there is only ever one replica, and each migration is additive (like `003` adding a column with a default) so the old revision keeps working during the switch.
+**Decision**: The UI is a Storage static website and the pipeline signs in with a managed identity, because the professor's update replaced Static Web Apps and students can't create service principals in the IE directory. Each service is a Container App in one Consumption environment with 0.25 vCPU, 0.5 GiB, and between 0 and 1 replicas. Each service has its own serverless Azure SQL database (Gen5, 0.5–1 vCore, auto-pause after 15 minutes, 2 GB, locally redundant backups), both on one SQL server. The UI is static files on a Storage static website. Idle, I only pay for database storage and a few cents of blob storage, because the apps scale to zero, the databases pause, and compute is billed per second only while it runs. The catch is that the first request after a quiet period hits a cold start: the container has to start and the database has to resume, which can take up to a minute. `get_connection()` covers this by retrying 5 times with growing delays, the pipeline's health check waits up to 6 minutes, and the UI shows "Service unavailable, try again shortly" and keeps polling. Migrations run at startup, which is safe because there is only ever one replica, and each migration is additive (like `003` adding a column with a default) so the old revision keeps working during the switch.
 
 **Alternatives considered**: An always-on App Service plan and a provisioned database. Rejected because they cost money every hour even with zero users, and a student project is idle most of the time.
 
